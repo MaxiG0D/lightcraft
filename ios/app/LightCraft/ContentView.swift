@@ -161,14 +161,17 @@ struct BarIcon: View {
     @Environment(\.isEnabled) private var enabled
     let icon: LCIcon
     var active = false
+    /// In the text colour rather than the icon colour (the phone's photo-first bar).
+    var bright = false
 
-    nonisolated init(_ icon: LCIcon, active: Bool = false) {
+    nonisolated init(_ icon: LCIcon, active: Bool = false, bright: Bool = false) {
         self.icon = icon
         self.active = active
+        self.bright = bright
     }
 
     var body: some View {
-        LCIconView(icon: icon, size: 20, color: active ? t.text : enabled ? nil : t.textDisabled)
+        LCIconView(icon: icon, size: 20, color: active || (bright && enabled) ? t.text : enabled ? nil : t.textDisabled)
             .frame(width: 44, height: t.topBarH - 6)
             .background(active ? t.toolActive : .clear, in: RoundedRectangle(cornerRadius: 6))
             .contentShape(Rectangle())

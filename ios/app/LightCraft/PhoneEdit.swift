@@ -37,12 +37,16 @@ struct PhoneEditView: View {
                         .frame(height: sheetHeight(geo.size))
                         .transition(.move(edge: .bottom).combined(with: .opacity))
                 }
-                switch tab {
-                case .edit: CategoryRow(model: model, category: $category)
-                case .rate: RatingRow(model: model)
-                case .presets, .history: EmptyView()
+                VStack(spacing: 0) {
+                    switch tab {
+                    case .edit: CategoryRow(model: model, category: $category)
+                    case .rate: RatingRow(model: model)
+                    case .presets, .history: EmptyView()
+                    }
+                    if tab == .edit || tab == .rate { t.chrome.frame(height: 1) }
+                    PhoneToolBar(tab: Binding(get: { tab }, set: select))
                 }
-                PhoneToolBar(tab: Binding(get: { tab }, set: select))
+                .background(t.canvas.ignoresSafeArea(edges: .bottom))
             }
             .animation(.snappy(duration: 0.28), value: sheetOpen)
             .animation(.snappy(duration: 0.28), value: tab)
@@ -141,25 +145,25 @@ struct PhoneTopBar: View {
 
     var body: some View {
         HStack(spacing: 0) {
-            Button { model.mode = .grid } label: { BarIcon(.chevronLeft) }
+            Button { model.mode = .grid } label: { BarIcon(.chevronLeft, bright: true) }
                 .accessibilityLabel("Library")
             if model.isBusy {
                 ProgressView().controlSize(.small).tint(t.text).padding(.leading, 4)
             }
             Spacer(minLength: 0)
-            Button { model.undo() } label: { BarIcon(.undo) }
+            Button { model.undo() } label: { BarIcon(.undo, bright: true) }
                 .disabled(model.undoLabel == nil)
                 .accessibilityLabel(model.undoLabel.map { "Undo \($0)" } ?? "Undo")
-            Button { model.redo() } label: { BarIcon(.redo) }
+            Button { model.redo() } label: { BarIcon(.redo, bright: true) }
                 .disabled(model.redoLabel == nil)
                 .accessibilityLabel(model.redoLabel.map { "Redo \($0)" } ?? "Redo")
             Button { model.showingOriginal.toggle() } label: {
-                BarIcon(.beforeAfter, active: model.showingOriginal)
+                BarIcon(.beforeAfter, active: model.showingOriginal, bright: true)
             }
             .accessibilityLabel("Before and After")
             .accessibilityAddTraits(model.showingOriginal ? .isSelected : [])
             .disabled(model.activeID == nil)
-            Button { Task { await model.exportToPhotos() } } label: { BarIcon(.share) }
+            Button { Task { await model.exportToPhotos() } } label: { BarIcon(.share, bright: true) }
                 .accessibilityLabel("Export to Photos")
                 .disabled(model.activeID == nil || model.isBusy)
             more
@@ -189,14 +193,15 @@ struct PhoneTopBar: View {
                 }
             }
         } label: {
-            BarIcon(.dots)
+            BarIcon(.dots, bright: true)
         }
         .accessibilityLabel("More")
     }
 }
 
 /// The row of categories over the tool bar: Auto (applies it), Profile, then the Edit panel's
-/// sections. Tap one to open its controls, tap it again to close them.
+/// sections, each an icon over its name with a dot when it holds edits. Tap one to open its
+/// controls, tap it again to close them.
 struct CategoryRow: View {
     @Environment(\.lc) private var t
     @Bindable var model: AppModel
@@ -204,21 +209,47 @@ struct CategoryRow: View {
 
     var body: some View {
         ScrollView(.horizontal) {
-            HStack(spacing: 4) {
-                chip("Auto", selected: false) {
+            HStack(spacing: 0) {
+                tile("Auto", symbol: "wand.and.stars", selected: false, edited: false) {
                     model.edit("develop.auto")
                     model.showToast("Auto settings applied")
                 }
-                chip("Profile", selected: category == PhoneEditView.profile) { toggle(PhoneEditView.profile) }
+                t.divider.brightness(t.isDark ? 0.12 : -0.12).frame(width: 1, height: 34).padding(.horizontal, 4)
+                tile("Profile", symbol: "square.stack.3d.down.right", selected: category == PhoneEditView.profile,
+                     edited: model.photo?.profileId != "lc.color" || (model.photo?.blackAndWhite ?? false)) {
+                    toggle(PhoneEditView.profile)
+                }
                 ForEach(model.layout?.sections ?? []) { s in
-                    chip(s.title, selected: category == s.id) { toggle(s.id) }
+                    tile(s.title, symbol: Self.symbol(s.id), selected: category == s.id, edited: edited(s.items)) { toggle(s.id) }
                 }
             }
-            .padding(.horizontal, 10)
+            .padding(.horizontal, 6)
         }
         .scrollIndicators(.hidden)
-        .frame(height: 46)
+        .frame(height: 66)
         .disabled(model.photo == nil)
+    }
+
+    /// An SF Symbol for a section (presentation only: the sections themselves come from Rust).
+    static func symbol(_ id: String) -> String {
+        switch id {
+        case "light": "sun.max"
+        case "color": "thermometer.medium"
+        case "effects": "circle.dashed.inset.filled"
+        case "detail": "triangle"
+        case "optics": "camera.aperture"
+        case "calibration": "dial.medium"
+        default: "slider.horizontal.3"
+        }
+    }
+
+    /// Whether any slider among `items` (flyouts included) is off its default.
+    private func edited(_ items: [LayoutItem]) -> Bool {
+        items.contains { item in
+            let ids = [item.id, item.control].compactMap { $0 } + (item.controls ?? [])
+            if ids.contains(where: { id in model.controls[id].map { $0.value != $0.default } ?? false }) { return true }
+            return edited(item.items ?? [])
+        }
     }
 
     private func toggle(_ id: String) {
@@ -226,17 +257,29 @@ struct CategoryRow: View {
         model.tool = .none
     }
 
-    private func chip(_ title: String, selected: Bool, action: @escaping () -> Void) -> some View {
+    private func tile(_ title: String, symbol: String, selected: Bool, edited: Bool, action: @escaping () -> Void) -> some View {
         Button(action: action) {
-            Text(title)
-                .font(LCFont.semibold(13.5))
-                .foregroundStyle(selected ? t.text : t.textDim)
-                .padding(.horizontal, 13)
-                .frame(height: 32)
-                .background(selected ? t.toolActive : .clear, in: Capsule())
-                .contentShape(Capsule())
+            VStack(spacing: 5) {
+                Image(systemName: symbol)
+                    .font(.system(size: 19, weight: .regular))
+                    .frame(height: 24)
+                Text(title)
+                    .font(LCFont.medium(11.5))
+                    .lineLimit(1)
+                Circle()
+                    .fill(t.textLabel)
+                    .frame(width: 4, height: 4)
+                    .opacity(edited ? 1 : 0)
+            }
+            .foregroundStyle(selected ? t.text : t.textDim)
+            .frame(minWidth: 62)
+            .padding(.horizontal, 4)
+            .frame(height: 62)
+            .contentShape(Rectangle())
         }
         .buttonStyle(LCPressStyle())
+        .accessibilityLabel(title)
+        .accessibilityValue(edited ? "Edited" : "")
         .accessibilityAddTraits(selected ? .isSelected : [])
     }
 }
@@ -264,7 +307,7 @@ struct RatingRow: View {
         }
         .buttonStyle(LCPressStyle())
         .frame(maxWidth: .infinity)
-        .frame(height: 46)
+        .frame(height: 66)
     }
 
     private func flag(_ icon: LCIcon, _ label: String, key: String, on: Bool) -> some View {
@@ -278,7 +321,7 @@ struct RatingRow: View {
     }
 }
 
-/// The bottom tool bar: Edit, Presets, History, Rate.
+/// The bottom tool bar: Edit, Presets, History, Rate. The chosen one sits on the accent colour.
 struct PhoneToolBar: View {
     @Environment(\.lc) private var t
     @Binding var tab: PhoneTab
@@ -288,14 +331,11 @@ struct PhoneToolBar: View {
             ForEach(PhoneTab.allCases) { item in
                 let on = item == tab
                 Button { tab = item } label: {
-                    VStack(spacing: 3) {
-                        LCIconView(icon: item.icon, size: 21, color: on ? t.text : t.icon)
-                        Text(item.title)
-                            .font(LCFont.medium(10.5))
-                            .foregroundStyle(on ? t.text : t.textDim)
-                    }
-                    .frame(maxWidth: .infinity, minHeight: 50)
-                    .contentShape(Rectangle())
+                    LCIconView(icon: item.icon, size: 22, color: on ? .white : t.text)
+                        .frame(width: 50, height: 46)
+                        .background(on ? t.accent : .clear, in: RoundedRectangle(cornerRadius: 10))
+                        .frame(maxWidth: .infinity, minHeight: 56)
+                        .contentShape(Rectangle())
                 }
                 .buttonStyle(LCPressStyle())
                 .accessibilityLabel(item.title)
@@ -303,7 +343,7 @@ struct PhoneToolBar: View {
             }
         }
         .padding(.horizontal, 12)
-        .overlay(alignment: .top) { t.chrome.frame(height: 1) }
+        .padding(.top, 4)
     }
 }
 
