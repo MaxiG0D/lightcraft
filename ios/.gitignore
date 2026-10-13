@@ -1,0 +1,9 @@
+/target
+/build
+/app/Generated
+/app/*.xcodeproj
+/app/LightCraft/Info.plist
+DerivedData/
+xcuserdata/
+*.xcuserstate
+*.xcframework

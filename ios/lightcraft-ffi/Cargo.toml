@@ -1,0 +1,41 @@
+[package]
+name = "lightcraft-ffi"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish = false
+description = "LightCraft iOS bridge: the engine (commands, library, rendering) exposed to Swift with uniffi"
+
+[lib]
+crate-type = ["staticlib", "lib"]
+name = "lightcraft_ffi"
+
+[[bin]]
+name = "uniffi-bindgen"
+path = "src/bin/uniffi-bindgen.rs"
+required-features = ["bindgen"]
+
+[lints]
+workspace = true
+
+[dependencies]
+# The engine (sessions, commands, library, rendering) and the desktop's headless backend on top of
+# it (`app.export`), as the CLI and MCP server use them.
+lightcraft-engine = { path = "../../crates/engine" }
+lightcraft-mcp = { path = "../../crates/mcp" }
+lightcraft-develop = { path = "../../crates/develop" }
+lightcraft-color = { path = "../../crates/color" }
+# only for the `heif` feature below
+lightcraft-codecs = { path = "../../crates/codecs" }
+serde_json = { version = "1", features = ["float_roundtrip"] }
+thiserror = "2"
+uniffi = "0.32"
+
+[dev-dependencies]
+lightcraft-codecs = { path = "../../crates/codecs" }
+
+[features]
+# HEIC decode in Rust (pure-Rust heic-rs). Off by default for the same HEVC-patent reason as the
+# desktop builds; without it the Swift side transcodes HEIC to JPEG with ImageIO first.
+heif = ["lightcraft-codecs/heif"]
+bindgen = ["uniffi/cli"]

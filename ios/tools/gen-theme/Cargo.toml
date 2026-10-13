@@ -1,0 +1,17 @@
+[package]
+name = "gen-theme"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish = false
+description = "Writes the iOS app's theme, icons and mirrored layout metrics from the desktop UI crate, and checks the mirrors against upstream (runs on the Mac at build time)"
+
+[lints]
+workspace = true
+
+[dependencies]
+lightcraft-ui-egui = { path = "../../../crates/ui-egui" }
+egui = "0.36"
+lightcraft-develop = { path = "../../../crates/develop" }
+lightcraft-ffi = { path = "../../lightcraft-ffi" }
+png = "0.18"
