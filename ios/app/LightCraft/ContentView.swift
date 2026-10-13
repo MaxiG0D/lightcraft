@@ -1,47 +1,49 @@
 import SwiftUI
 
 /// The desktop's window: top bar; the Grid or the Detail view (photo, filmstrip) with the bottom
-/// bar; and in Detail the side panel (Edit, Presets, History) with its tool strip — on the right
-/// on iPad and in landscape, under the photo on iPhone in portrait.
+/// bar; and in Detail the side panel (Edit, Presets, History) with its tool strip on the right, on
+/// iPad and in landscape. On a phone held upright, Detail is `PhoneEditView`: the photo edge to edge,
+/// with the controls in a compact sheet.
 struct ContentView: View {
     @Environment(\.colorScheme) private var scheme
     @Environment(\.displayScale) private var displayScale
     @Environment(\.scenePhase) private var phase
     @Bindable var model: AppModel
     @Bindable var appearance: Appearance
+    /// Detail with the photo alone: no side panel, tool strip or filmstrip (iPad and landscape).
+    @AppStorage("detail.focus") private var focus = false
 
     var body: some View {
         let t = appearance.tokens(for: scheme)
         GeometryReader { geo in
             let side = geo.size.width >= 700 || geo.size.width > geo.size.height
-            VStack(spacing: 0) {
-                TopBar(model: model, appearance: appearance)
-                PanelDivider()
-                if side {
-                    HStack(spacing: 0) {
-                        VStack(spacing: 0) {
-                            main
-                            BottomBar(model: model)
+            if !side && model.mode == .detail {
+                PhoneEditView(model: model, appearance: appearance)
+            } else {
+                VStack(spacing: 0) {
+                    TopBar(model: model, appearance: appearance, focus: side && model.mode == .detail ? $focus : nil)
+                    PanelDivider()
+                    if side {
+                        HStack(spacing: 0) {
+                            VStack(spacing: 0) {
+                                main
+                                BottomBar(model: model)
+                            }
+                            if model.mode == .detail && !focus {
+                                PanelDivider().frame(width: 1, height: nil)
+                                SidePanel(model: model)
+                                    .frame(width: max(t.panelW, min(geo.size.width * 0.3, 360)))
+                                    .transition(.move(edge: .trailing))
+                                PanelDivider().frame(width: 1, height: nil)
+                                ToolStrip(model: model)
+                                    .transition(.move(edge: .trailing))
+                            }
                         }
-                        if model.mode == .detail {
-                            PanelDivider().frame(width: 1, height: nil)
-                            SidePanel(model: model)
-                                .frame(width: max(t.panelW, min(geo.size.width * 0.3, 360)))
-                            PanelDivider().frame(width: 1, height: nil)
-                            ToolStrip(model: model)
-                        }
+                        .animation(.snappy(duration: 0.3), value: focus)
+                    } else {
+                        LibraryGrid(model: model)
+                        BottomBar(model: model)
                     }
-                } else if model.mode == .grid {
-                    LibraryGrid(model: model)
-                    BottomBar(model: model)
-                } else {
-                    canvas.frame(height: geo.size.height * 0.42)
-                    Filmstrip(model: model).frame(height: t.filmH * 0.55)
-                    PanelDivider()
-                    ToolStrip(model: model, vertical: false)
-                    PanelDivider()
-                    SidePanel(model: model)
-                    BottomBar(model: model)
                 }
             }
         }
@@ -62,12 +64,12 @@ struct ContentView: View {
             LibraryGrid(model: model)
         } else {
             canvas
-            Filmstrip(model: model)
+            if !focus { Filmstrip(model: model) }
         }
     }
 
     private var canvas: some View {
-        PhotoCanvas(model: model)
+        PhotoCanvas(model: model, inset: 12, background: appearance.tokens(for: scheme).gridBg)
             .onGeometryChange(for: CGSize.self, of: \.size) { size in
                 // previews at the canvas's pixel size: the engine picks the source level to decode
                 let edge = UInt32(min(max(max(size.width, size.height) * displayScale, 512), 3072))
@@ -85,6 +87,8 @@ struct TopBar: View {
     @Environment(\.lc) private var t
     @Bindable var model: AppModel
     @Bindable var appearance: Appearance
+    /// Shows the photo alone (hides the panels) when set; nil where there is nothing to hide.
+    var focus: Binding<Bool>?
 
     var body: some View {
         HStack(spacing: 4) {
@@ -112,6 +116,18 @@ struct TopBar: View {
             Button { Task { await model.exportToPhotos() } } label: { BarIcon(.share) }
                 .accessibilityLabel("Export to Photos")
                 .disabled(model.activeID == nil || model.isBusy)
+            if let focus {
+                Button { focus.wrappedValue.toggle() } label: {
+                    Image(systemName: "sidebar.trailing")
+                        .font(.system(size: 17))
+                        .foregroundStyle(focus.wrappedValue ? t.icon : t.text)
+                        .frame(width: 44, height: t.topBarH - 6)
+                        .background(focus.wrappedValue ? .clear : t.toolActive, in: RoundedRectangle(cornerRadius: 6))
+                        .contentShape(Rectangle())
+                }
+                .accessibilityLabel(focus.wrappedValue ? "Show Panels" : "Hide Panels")
+                .keyboardShortcut("\\", modifiers: .command)
+            }
         }
         .buttonStyle(LCPressStyle())
         .padding(.horizontal, 8)
@@ -164,25 +180,29 @@ struct BarIcon: View {
 struct PhotoCanvas: View {
     @Environment(\.lc) private var t
     @Bindable var model: AppModel
+    /// Margin around the photo.
+    var inset: CGFloat = 16
+    /// The canvas colour (the desktop canvas when nil).
+    var background: Color?
     @State private var wasShowingOriginal = false
 
     var body: some View {
         GeometryReader { geo in
             ZStack {
-                t.canvas
+                background ?? t.canvas
                 if let image = shown {
-                    let frame = fitted(image, in: geo.size.insetBy(16))
+                    let frame = fitted(image, in: geo.size.insetBy(inset))
                     Image(decorative: image, scale: 1)
                         .resizable()
                         .frame(width: frame.width, height: frame.height)
-                        .position(x: frame.midX + 16, y: frame.midY + 16)
+                        .position(x: frame.midX + inset, y: frame.midY + inset)
                         .accessibilityLabel(model.showingOriginal ? "Original photo" : "Edited photo")
                     Color.clear
                         .contentShape(Rectangle())
                         .onTapGesture { location in
                             guard model.tool != .none else { return }
-                            let x = (location.x - 16 - frame.minX) / frame.width
-                            let y = (location.y - 16 - frame.minY) / frame.height
+                            let x = (location.x - inset - frame.minX) / frame.width
+                            let y = (location.y - inset - frame.minY) / frame.height
                             guard (0...1).contains(x), (0...1).contains(y) else { return }
                             model.sample(x: x, y: y)
                         }
