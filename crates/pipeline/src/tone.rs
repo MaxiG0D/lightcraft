@@ -99,6 +99,9 @@ const HDR_FROM_EV: f32 = 1.5;
 pub struct ToneMap {
     lut: Vec<f32>,
     chroma: [f32; CHROMA_N],
+    /// Colourfulness scale by scene EV, on the same grid as `lut` ([`ToneMap::sat_scale`]); empty
+    /// (every scale 1) unless [`ToneMap::with_rgb_contrast`] set it.
+    sat: Vec<f32>,
 }
 
 impl ToneMap {
@@ -123,7 +126,7 @@ impl ToneMap {
                 if peak > 1.0 { (o + (peak - 1.0) * smooth(HDR_FROM_EV, top, ev)).clamp(0.0, peak) } else { o }
             })
             .collect();
-        ToneMap { lut, chroma: curve.chroma }
+        ToneMap { lut, chroma: curve.chroma, sat: Vec::new() }
     }
     /// `contrast`, `whites`, `blacks` in −100..100 (Lightroom slider units).
     pub fn new(contrast: f64, whites: f64, blacks: f64) -> ToneMap {
@@ -169,7 +172,7 @@ impl ToneMap {
                 o.clamp(0.0, peak)
             })
             .collect();
-        ToneMap { lut, chroma: NO_CHROMA }
+        ToneMap { lut, chroma: NO_CHROMA, sat: Vec::new() }
     }
 
     /// Tone map for display-referred sources: identity at neutral settings.
@@ -215,7 +218,59 @@ impl ToneMap {
                 o.clamp(0.0, peak)
             })
             .collect();
-        ToneMap { lut, chroma: NO_CHROMA }
+        ToneMap { lut, chroma: NO_CHROMA, sat: Vec::new() }
+    }
+
+    /// Fork-only (MaxiG0D/lightcraft, [`lightcraft_develop::Process::Fork1`]): this map followed by a
+    /// Lightroom-like Contrast, `contrast` in −100..100. One S-curve for every source (camera look,
+    /// default raw curve or rendered file), in a gamma-2.2 domain about display grey, with black and
+    /// white fixed; about 1.7× the midtone slope at +100, and −100 its exact inverse. HDR values above SDR
+    /// white pass. As a curve applied to the R, G and B channels would (the DNG SDK's hue-preserving RGB
+    /// tone curve), it scales colourfulness by its log-log slope ([`ToneMap::sat_scale`]): more contrast
+    /// gives more colour, less gives less. At 0 the map is unchanged.
+    pub fn with_rgb_contrast(mut self, contrast: f64) -> ToneMap {
+        let c = (contrast / 100.0) as f32;
+        if c == 0.0 || !c.is_finite() {
+            return self;
+        }
+        let c = c.clamp(-1.0, 1.0);
+        let base = self.lut.clone();
+        for o in &mut self.lut {
+            if *o > 0.0 && *o < 1.0 {
+                *o = contrast_curve(o.powf(1.0 / 2.2), c).powf(2.2);
+            }
+        }
+        // the curve's log-log slope at each entry, over the base map's (central differences in EV)
+        let log_slope = |t: &[f32], i: usize| -> Option<f32> {
+            let (a, b) = (t.get(i.saturating_sub(1))?, t.get((i + 1).min(LUT_N - 1))?);
+            (*a > 1e-12 && *b > 1e-12).then(|| (b / a).ln())
+        };
+        self.sat = (0..LUT_N)
+            .map(|i| match (log_slope(&self.lut, i), log_slope(&base, i)) {
+                (Some(new), Some(old)) if old > 1e-5 => (new / old).clamp(0.5, 1.8),
+                _ => 1.0,
+            })
+            .collect();
+        self
+    }
+
+    /// Colourfulness scale for scene luminance `y` (1 unless [`ToneMap::with_rgb_contrast`] set one).
+    #[inline]
+    pub fn sat_scale(&self, y: f32) -> f32 {
+        if self.sat.is_empty() || y <= 0.0 || !y.is_finite() {
+            return 1.0;
+        }
+        let ev = (y / GREY).log2();
+        let f = ((ev - LUT_MIN_EV) / (LUT_MAX_EV - LUT_MIN_EV)).clamp(0.0, 1.0) * (LUT_N - 1) as f32;
+        let i = (f as usize).min(LUT_N - 2);
+        let t = f - i as f32;
+        let (a, b) = (self.sat.get(i).copied().unwrap_or(1.0), self.sat.get(i + 1).copied().unwrap_or(1.0));
+        a + (b - a) * t
+    }
+
+    /// The colourfulness table ([`ToneMap::sat_scale`]): `LUT_N` entries, or empty when every scale is 1.
+    pub fn sat_lut(&self) -> &[f32] {
+        &self.sat
     }
 
     /// The table (`LUT_N` entries, see [`ToneMap::apply`]).
@@ -254,6 +309,32 @@ impl ToneMap {
         let v = self.lut[i] + (self.lut[i + 1] - self.lut[i]) * t;
         if ev < LUT_MIN_EV { v * (y / (GREY * 2f32.powf(LUT_MIN_EV))) } else { v }
     }
+}
+
+/// Display grey in the gamma-2.2 domain: the pivot of [`contrast_curve`].
+const PIVOT: f32 = 0.459_157_8; // 0.18^(1/2.2)
+
+/// The Fork1 contrast S-curve on `p` in 0..=1 (gamma 2.2), `c` in −1..=1: for `c > 0` a blend of the
+/// identity with power curves meeting at [`PIVOT`] with slope `1 + 1.2c` (monotone for any `c`, black,
+/// grey and white fixed); for `c < 0` the inverse of the curve for `|c|`, so −x undoes +x.
+fn contrast_curve(p: f32, c: f32) -> f32 {
+    const BLEND: f32 = 0.6;
+    let up = |p: f32, c: f32| {
+        let g = 1.0 + 1.2 * c;
+        let s = if p <= PIVOT { PIVOT * (p / PIVOT).powf(g) } else { 1.0 - (1.0 - PIVOT) * ((1.0 - p) / (1.0 - PIVOT)).powf(g) };
+        p + BLEND * (s - p)
+    };
+    let p = if p.is_finite() { p.clamp(0.0, 1.0) } else { 0.0 };
+    if c >= 0.0 {
+        return up(p, c);
+    }
+    // the inverse by bisection: `up` is increasing, so 30 halvings pin it far below f32 resolution
+    let (mut lo, mut hi) = (0.0f32, 1.0f32);
+    for _ in 0..30 {
+        let mid = 0.5 * (lo + hi);
+        if up(mid, -c) < p { lo = mid } else { hi = mid }
+    }
+    0.5 * (lo + hi)
 }
 
 fn smooth(e0: f32, e1: f32, x: f32) -> f32 {
@@ -446,5 +527,51 @@ mod tests {
         assert!(ToneMap::new(0.0, 60.0, 0.0).apply(0.8) > base.apply(0.8));
         assert!(ToneMap::new(0.0, 0.0, -60.0).apply(0.01) < base.apply(0.01));
         assert!(ToneMap::new(0.0, 0.0, 60.0).apply(0.01) > base.apply(0.01));
+    }
+
+    #[test]
+    fn fork_contrast_curve_is_monotone_fixes_black_grey_white_and_inverts() {
+        for c in [-1.0f32, -0.6, -0.2, 0.2, 0.6, 1.0] {
+            assert!(contrast_curve(0.0, c).abs() < 1e-5 && (contrast_curve(1.0, c) - 1.0).abs() < 1e-5, "{c}");
+            assert!((contrast_curve(PIVOT, c) - PIVOT).abs() < 1e-5, "{c}: grey stays");
+            let mut prev = -1.0;
+            for i in 0..=1000 {
+                let v = contrast_curve(i as f32 / 1000.0, c);
+                assert!(v >= prev, "{c} at {i}");
+                prev = v;
+            }
+            // −x undoes +x
+            for p in [0.05f32, 0.3, 0.6, 0.9] {
+                assert!((contrast_curve(contrast_curve(p, c), -c) - p).abs() < 1e-4, "{c} at {p}");
+            }
+        }
+        // +100: about 1.7× the slope at grey, steeper than V1's display S-curve (≈ 1.35×)
+        let h = 1e-3;
+        let slope = (contrast_curve(PIVOT + h, 1.0) - contrast_curve(PIVOT - h, 1.0)) / (2.0 * h);
+        assert!((slope - 1.72).abs() < 0.02, "{slope}");
+        assert!(contrast_curve(f32::NAN, 0.5).is_finite());
+    }
+
+    #[test]
+    fn fork_contrast_is_identity_at_zero_and_couples_colour() {
+        let base = ToneMap::hdr(0.0, 0.0, 0.0, 1.0);
+        let same = base.clone().with_rgb_contrast(0.0);
+        assert_eq!((same.lut(), same.sat_lut().len()), (base.lut(), 0));
+        assert_eq!(same.sat_scale(0.18), 1.0);
+        assert_eq!(base.clone().with_rgb_contrast(f64::NAN).sat_lut().len(), 0);
+        let up = base.clone().with_rgb_contrast(100.0);
+        let down = base.clone().with_rgb_contrast(-100.0);
+        // darker shadows, brighter highlights; grey about where it was
+        assert!(up.apply(0.03) < base.apply(0.03) && up.apply(0.8) > base.apply(0.8));
+        assert!(down.apply(0.03) > base.apply(0.03) && down.apply(0.8) < base.apply(0.8));
+        // more contrast, more colour in the midtones; less, less
+        assert!(up.sat_scale(0.18) > 1.4 && down.sat_scale(0.18) < 0.75, "{} {}", up.sat_scale(0.18), down.sat_scale(0.18));
+        assert!([0.0, -1.0, f32::NAN, f32::INFINITY].iter().all(|y| up.sat_scale(*y) == 1.0));
+        // monotone, bounded, and HDR above SDR white untouched
+        let hdr = ToneMap::hdr(0.0, 0.0, 0.0, 4.0);
+        let hup = hdr.clone().with_rgb_contrast(100.0);
+        assert!(hup.lut().windows(2).all(|w| w[1] >= w[0]) && up.lut().windows(2).all(|w| w[1] >= w[0]));
+        assert!(hup.lut().iter().zip(hdr.lut()).all(|(a, b)| *b < 1.0 || a == b));
+        assert!(up.sat_lut().iter().all(|k| (0.5..=1.8).contains(k)));
     }
 }

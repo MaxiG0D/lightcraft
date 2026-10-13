@@ -1,7 +1,7 @@
 // The per-pixel stage: a straight port of `lightcraft_pipeline::finish` (keep in step with it).
 // Bindings: img (rgb, pre-exposure), log_l, base, clar, tex, dark, masks (NMASK planes, then the
 // blurred chromaticity when HAS_CHROMA), aux
-// (tone LUT | chroma curve | sRGB LUT | curve LUTs | mask terms), out (packed RGBA8).
+// (tone LUT | chroma curve | sRGB LUT | curve LUTs | mask terms | contrast colour table), out (packed RGBA8).
 
 fn tone_apply(y: f32) -> f32 {
     if (y <= 0.0) {
@@ -29,6 +29,19 @@ fn chroma_scale(o: f32) -> f32 {
         return a;
     }
     return a + (b - a) * t;
+}
+
+// Fork-only (Process::Fork1): the contrast colour scale by scene luminance (`ToneMap::sat_scale`).
+fn sat_scale(y: f32) -> f32 {
+    if (pu(F_HAS_SAT) == 0u || y <= 0.0) {
+        return 1.0;
+    }
+    let ev = log2(y / GREY);
+    let f = clamp((ev - TONE_MIN_EV) / (TONE_MAX_EV - TONE_MIN_EV), 0.0, 1.0) * f32(TONE_N - 1u);
+    let i = min(u32(f), TONE_N - 2u);
+    let t = f - f32(i);
+    let o = pu(F_SAT_OFF);
+    return aux[o + i] + (aux[o + i + 1u] - aux[o + i]) * t;
 }
 
 fn encode_srgb(v: f32) -> f32 {
@@ -416,6 +429,15 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
     let k = chroma_scale(o);
     if (k != 1.0) {
         d = vec3<f32>(o) + (d - vec3<f32>(o)) * k;
+    }
+    // `finish::contrast_sat`: never push a channel below 0
+    var ks = sat_scale(yl);
+    let lo = min(d.x, min(d.y, d.z));
+    if (ks > 1.0 && lo < o && o > 0.0) {
+        ks = max(min(ks, o / (o - lo)), 1.0);
+    }
+    if (ks != 1.0) {
+        d = vec3<f32>(o) + (d - vec3<f32>(o)) * ks;
     }
     let mx = max(d.x, max(d.y, d.z));
     if (mx > 1.0) {

@@ -281,11 +281,18 @@ pub fn base_tone(s: &DevelopSettings, info: &SourceInfo, peak: f32) -> ToneMap {
     let l = &s.light;
     match s.process.process() {
         // V2 changes the Highlights/Shadows base (`local::tone_base`), not the tone map
-        Process::V1 | Process::V2 => match info.camera_tone.as_ref().filter(|_| info.raw) {
-            Some(curve) => ToneMap::camera_hdr(curve, l.contrast, l.whites, l.blacks, peak),
-            None if info.raw => ToneMap::hdr(l.contrast, l.whites, l.blacks, peak),
-            None => ToneMap::display_hdr(l.contrast, l.whites, l.blacks, peak),
-        },
+        Process::V1 | Process::V2 => v1_tone(info, l.contrast, l.whites, l.blacks, peak),
+        // fork-only: V2's map without its Contrast, then the Lightroom-like one on top
+        Process::Fork1 => v1_tone(info, 0.0, l.whites, l.blacks, peak).with_rgb_contrast(l.contrast),
+    }
+}
+
+/// The V1 / V2 tone map.
+fn v1_tone(info: &SourceInfo, contrast: f64, whites: f64, blacks: f64, peak: f32) -> ToneMap {
+    match info.camera_tone.as_ref().filter(|_| info.raw) {
+        Some(curve) => ToneMap::camera_hdr(curve, contrast, whites, blacks, peak),
+        None if info.raw => ToneMap::hdr(contrast, whites, blacks, peak),
+        None => ToneMap::display_hdr(contrast, whites, blacks, peak),
     }
 }
 
@@ -538,6 +545,10 @@ pub(crate) fn finish_with<T: Copy + Default + Send>(
             if k != 1.0 {
                 d = d.map(|v| o + (v - o) * k);
             }
+            let ks = contrast_sat(tone.sat_scale(yl), o, d);
+            if ks != 1.0 {
+                d = d.map(|v| o + (v - o) * ks);
+            }
             let mx = d[0].max(d[1]).max(d[2]);
             if mx > peak {
                 let t = ((mx - peak) / (mx - o).max(1e-6)).clamp(0.0, 1.0);
@@ -676,6 +687,13 @@ const GAMUT_WARN: f32 = 0.995;
 /// For the gamut warnings: `r` needed desaturating by `t` to fit, and isn't simply a neutral
 /// beyond white or below black (that's clipping, which the clipping warnings show).
 #[inline]
+/// The Fork1 contrast colour scale `ks` ([`ToneMap::sat_scale`]) for a pixel of luminance `o` and colour
+/// `d`, limited so a boost never pushes a channel below 0 (as a curve on the channels wouldn't).
+pub fn contrast_sat(ks: f32, o: f32, d: [f32; 3]) -> f32 {
+    let lo = d[0].min(d[1]).min(d[2]);
+    if ks > 1.0 && lo < o && o > 0.0 { ks.min(o / (o - lo)).max(1.0) } else { ks }
+}
+
 fn out_of_gamut(r: [f32; 3], t: f32) -> bool {
     let (lo, hi) = (r[0].min(r[1]).min(r[2]), r[0].max(r[1]).max(r[2]));
     t < GAMUT_WARN && (hi - lo) > 0.02 * hi.abs().max(1e-3) && hi - lo > 1e-3 && (lo < -1e-3 || (hi > 1.0 && lo < 1.0))

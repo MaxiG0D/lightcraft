@@ -243,3 +243,67 @@ fn the_base_plane_is_cached_per_process() {
     assert_ne!(local::base_key(&s1, sg, 0), local::base_key(&s2, sg, 0), "the process is part of the key");
     assert_ne!(local::base_key(&s2, sg, 0), local::base_key(&s2, sg, sig.base_detail));
 }
+
+/// Mean luma and mean colourfulness ((max − min) / 255) of `img`'s pixels in the middle rows.
+fn colour_stats(img: &Rgba8) -> (f32, f32) {
+    let px: Vec<[u8; 4]> = img.data[W * 40..W * (H - 40)].to_vec();
+    let n = px.len() as f32;
+    let lum = px.iter().map(|p| luma(*p)).sum::<f32>() / n;
+    let chroma = px.iter().map(|p| (p[0].max(p[1]).max(p[2]) - p[0].min(p[1]).min(p[2])) as f32 / 255.0).sum::<f32>() / n;
+    (lum, chroma)
+}
+
+/// Muted midtone colours across the frame: a hue sweep left to right, scene luminance from 0.03 to 0.6
+/// top to bottom.
+fn colour_scene() -> Rgb32f {
+    Rgb32f::from_fn(W, H, |x, y| {
+        let h = x as f32 / W as f32 * std::f32::consts::TAU;
+        let l = 0.03 * 20f32.powf(y as f32 / H as f32);
+        let c = 0.3;
+        [l * (1.0 + c * h.cos()), l * (1.0 + c * (h - 2.1).cos()), l * (1.0 + c * (h + 2.1).cos())]
+    })
+}
+
+#[test]
+fn fork1_renders_as_v2_until_contrast_moves() {
+    let fork = |id: &str, v: f64| with_on(Process::Fork1, id, v);
+    assert!(shot(&on(Process::Fork1)) == shot(&on(Process::V2)), "unedited photos look the same");
+    // the other basic sliders are V2's
+    for (id, v) in [("light.whites", 50.0), ("light.blacks", -40.0), ("light.highlights", -60.0), ("light.exposure", 0.7)] {
+        assert!(shot(&fork(id, v)) == shot(&with(id, v)), "{id}");
+    }
+    assert!(shot(&fork("light.contrast", 50.0)) != shot(&with("light.contrast", 50.0)));
+}
+
+#[test]
+fn fork1_contrast_adds_colour_and_bites_harder_on_every_source() {
+    let src = colour_scene();
+    let req = RenderRequest::fit(W, H);
+    // a camera look like the ones fitted from camera JPEGs (most raws have one)
+    let look = crate::tone::CameraTone::new(std::array::from_fn(|i| {
+        let x = 0.004 * 1.18f32.powi(i as i32);
+        [x, 1.0 - (-2.0 * x).exp()]
+    }));
+    let camera = SourceInfo { raw: true, camera_tone: look, ..SourceInfo::default() };
+    let plain_raw = SourceInfo { raw: true, ..SourceInfo::default() };
+    for (name, info) in [("rendered", SourceInfo::default()), ("camera-look raw", camera), ("raw", plain_raw)] {
+        let shot = |p: Process, c: f64| colour_stats(&render(&src, &info, &with_on(p, "light.contrast", c), &req).image);
+        let (_, c0) = shot(Process::V2, 0.0);
+        let (_, v2) = shot(Process::V2, 80.0);
+        let (_, up) = shot(Process::Fork1, 80.0);
+        let (_, down) = shot(Process::Fork1, -80.0);
+        // V2 keeps colourfulness about level; Fork1 adds colour with contrast and takes it away without
+        assert!(up > v2 * 1.1 && up > c0 * 1.1 && down < c0 * 0.9, "{name}: base {c0}, V2 +80 {v2}, Fork1 +80 {up}, −80 {down}");
+        // and spreads the tones further than V2 at the same value (V2's raw curve without a camera
+        // look already steepens log exposure by about as much, so it is left out)
+        if info.camera_tone.is_none() && info.raw {
+            continue;
+        }
+        let spread = |p: Process| {
+            let img = render(&src, &info, &with_on(p, "light.contrast", 80.0), &req).image;
+            let row = |y: usize| (0..W).map(|x| luma(img.data[y * W + x])).sum::<f32>() / W as f32;
+            row(H - 50) - row(50)
+        };
+        assert!(spread(Process::Fork1) > spread(Process::V2), "{name}");
+    }
+}

@@ -595,6 +595,26 @@ fn highlights_shadows_base_matches_on_every_process() {
     }
 }
 
+/// Fork-only (`Process::Fork1`): the Lightroom-like Contrast and its colour table match the CPU, on
+/// rendered files and raws, up and down.
+#[test]
+fn fork1_contrast_matches() {
+    if !gpu() {
+        return;
+    }
+    let src = scene(0, 1200, 800);
+    let req = RenderRequest::fit(1200, 800);
+    for info in [SourceInfo::default(), SourceInfo { raw: true, ..Default::default() }] {
+        for c in [80.0, -80.0] {
+            let mut s = DevelopSettings { process: Process::Fork1.version(), ..DevelopSettings::default() };
+            s.light.contrast = c;
+            check(&format!("fork1 contrast {c} raw {}", info.raw), &src, &info, &s, &req);
+            typical(&mut s);
+            check(&format!("fork1 typical {c} raw {}", info.raw), &src, &info, &s, &req);
+        }
+    }
+}
+
 #[test]
 fn overlays_match() {
     if !gpu() {

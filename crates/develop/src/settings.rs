@@ -84,17 +84,23 @@ pub enum Process {
     /// Highlights and Shadows keep the local contrast of the tones they move: their edge-aware base
     /// is taken of a fine median of log luminance (issue #632).
     V2,
+    /// Fork-only (MaxiG0D/lightcraft, the iOS port), not upstream: V2 with a Lightroom-like Contrast, one
+    /// stronger S-curve for every file that also adds colour as it steepens (`tone::ToneMap::with_rgb_contrast`).
+    /// Numbered far past upstream's processes so it never collides with theirs: when upstream ships its own
+    /// tone retune, delete this variant and its arms, and photos saved with 1001 render with upstream's latest.
+    Fork1,
 }
 
 impl Process {
     /// Every process, oldest first.
-    pub const ALL: [Process; 2] = [Process::V1, Process::V2];
-    pub const LATEST: Process = Process::V2;
+    pub const ALL: [Process; 3] = [Process::V1, Process::V2, Process::Fork1];
+    pub const LATEST: Process = Process::Fork1;
 
     pub const fn version(self) -> ProcessVersion {
         match self {
             Process::V1 => ProcessVersion(1),
             Process::V2 => ProcessVersion(2),
+            Process::Fork1 => ProcessVersion(1001),
         }
     }
 }
