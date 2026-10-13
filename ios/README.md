@@ -5,6 +5,16 @@ pick a photo, edit it with the Light (Exposure … Blacks) and Color (Temp, Tint
 sliders, Auto and B&W, compare before/after, and export a JPEG to Photos. Previews render on the GPU
 (wgpu → Metal) and fall back to the CPU pipeline.
 
+## Screenshots
+
+This is the goal: the desktop Edit view on iPhone and iPad (simulator captures of the current build).
+
+<p align="center">
+  <img src="docs/iphone-edit.png" alt="LightCraft on iPhone" height="560">
+  &nbsp;&nbsp;
+  <img src="docs/ipad-edit.png" alt="LightCraft on iPad" height="560">
+</p>
+
 ```
 ios/
   Cargo.toml              own Cargo workspace (outside the main one: `cargo xtask ci` never sees it)

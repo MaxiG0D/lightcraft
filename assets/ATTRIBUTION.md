@@ -34,3 +34,4 @@ Notes
   [storytold/craft-fonts](https://github.com/storytold/craft-fonts), with their licences and attribution in its
   `ATTRIBUTION.md`, and are embedded only in builds made with the optional `CRAFT_FONTS_DIR` build input (all official
   releases). Never commit font files here; add new fonts to craft-fonts (craftrules `standards/fonts.md`).
+| `ios/docs/*.png` | Simulator screenshots of the LightCraft iOS app (iPhone, iPad) for `ios/README.md` | LightCraft contributors | original work (the app UI); the photographs shown are the project owner's own sample images in the simulator's photo library | MIT OR Apache-2.0 | 2026-10-13 | downscaled |
