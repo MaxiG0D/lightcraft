@@ -18,6 +18,13 @@
 </p>
 
 <p align="center">
+  <b>This fork is porting LightCraft to iPhone and iPad.</b> See <a href="ios/README.md"><code>ios/</code></a>.<br>
+  <img src="ios/docs/iphone-edit.png" alt="LightCraft on iPhone" height="520">
+  &nbsp;&nbsp;
+  <img src="ios/docs/ipad-edit.png" alt="LightCraft on iPad" height="520">
+</p>
+
+<p align="center">
   <b>Photo library and raw development; an open-source, clean-room reimplementation of Adobe Lightroom, rebuilt in pure Rust.</b><br>
   Native on macOS, Windows and Linux. In the browser via WebAssembly. Drivable end to end by AI agents over MCP.
 </p>
