@@ -282,8 +282,8 @@ pub fn base_tone(s: &DevelopSettings, info: &SourceInfo, peak: f32) -> ToneMap {
     match s.process.process() {
         // V2 changes the Highlights/Shadows base (`local::tone_base`), not the tone map
         Process::V1 | Process::V2 => v1_tone(info, l.contrast, l.whites, l.blacks, peak),
-        // fork-only: V2's map without its Contrast, then the Lightroom-like one on top
-        Process::Fork1 => v1_tone(info, 0.0, l.whites, l.blacks, peak).with_rgb_contrast(l.contrast),
+        // fork-only: V2's map without its Contrast, Whites and Blacks, then Lightroom-like ones on top
+        Process::Fork1 => v1_tone(info, 0.0, 0.0, 0.0, peak).with_fork_tone(l.contrast, l.whites, l.blacks),
     }
 }
 

@@ -265,14 +265,17 @@ fn colour_scene() -> Rgb32f {
 }
 
 #[test]
-fn fork1_renders_as_v2_until_contrast_moves() {
+fn fork1_renders_as_v2_until_contrast_whites_or_blacks_move() {
     let fork = |id: &str, v: f64| with_on(Process::Fork1, id, v);
     assert!(shot(&on(Process::Fork1)) == shot(&on(Process::V2)), "unedited photos look the same");
-    // the other basic sliders are V2's
-    for (id, v) in [("light.whites", 50.0), ("light.blacks", -40.0), ("light.highlights", -60.0), ("light.exposure", 0.7)] {
+    // Highlights and Exposure are V2's
+    for (id, v) in [("light.highlights", -60.0), ("light.exposure", 0.7)] {
         assert!(shot(&fork(id, v)) == shot(&with(id, v)), "{id}");
     }
-    assert!(shot(&fork("light.contrast", 50.0)) != shot(&with("light.contrast", 50.0)));
+    // Contrast, Whites and Blacks are the Lightroom-like ones
+    for (id, v) in [("light.contrast", 50.0), ("light.whites", 50.0), ("light.blacks", -40.0)] {
+        assert!(shot(&fork(id, v)) != shot(&with(id, v)), "{id}");
+    }
 }
 
 #[test]

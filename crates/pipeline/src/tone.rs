@@ -229,16 +229,33 @@ impl ToneMap {
     /// and B channels (the DNG SDK's hue-preserving RGB tone curve), it scales colourfulness with its
     /// log-log slope ([`ToneMap::sat_scale`], damped by [`SAT_GAIN`]): more contrast gives more colour,
     /// less gives less. At 0 the map is unchanged.
-    pub fn with_rgb_contrast(mut self, contrast: f64) -> ToneMap {
-        let c = (contrast / 100.0) as f32;
-        if c == 0.0 || !c.is_finite() {
+    pub fn with_rgb_contrast(self, contrast: f64) -> ToneMap {
+        self.with_fork_tone(contrast, 0.0, 0.0)
+    }
+
+    /// Fork-only ([`lightcraft_develop::Process::Fork1`]): [`ToneMap::with_rgb_contrast`] with
+    /// Lightroom-like Whites and Blacks (each −100..100) applied before the Contrast curve, in the same
+    /// gamma-2.2 domain and with the same colour coupling. Whites brightens (or dims) everything from
+    /// the midtones up and takes the highlights to white (or below it); Blacks lifts (or crushes) the
+    /// shadows and fades out toward white. Their curves at ±100 are measured from Lightroom on a drone
+    /// photo ([`WHITES_UP`] and friends), and smaller amounts blend toward the identity.
+    pub fn with_fork_tone(mut self, contrast: f64, whites: f64, blacks: f64) -> ToneMap {
+        let amount = |v: f64| {
+            let t = (v / 100.0) as f32;
+            if t.is_finite() { t.clamp(-1.0, 1.0) } else { 0.0 }
+        };
+        let (c, w, b) = (amount(contrast), amount(whites), amount(blacks));
+        if c == 0.0 && w == 0.0 && b == 0.0 {
             return self;
         }
-        let c = c.clamp(-1.0, 1.0);
         let base = self.lut.clone();
         for o in &mut self.lut {
             if *o > 0.0 && *o < 1.0 {
-                *o = contrast_curve(o.powf(1.0 / 2.2), c).powf(2.2);
+                let p = o.powf(1.0 / 2.2);
+                let p = table_curve(p, w, &WHITES_UP, &WHITES_DOWN);
+                let p = table_curve(p, b, &BLACKS_UP, &BLACKS_DOWN);
+                let p = if c == 0.0 { p } else { contrast_curve(p, c) };
+                *o = p.max(0.0).powf(2.2);
             }
         }
         // the curve's log-log slope at each entry, over the base map's (central differences in EV)
@@ -321,6 +338,26 @@ const BLEND: f32 = 0.9;
 /// How much of the curve's log-log slope becomes colourfulness: a full RGB curve's coupling gives more
 /// colour than Lightroom at +100 (orange wood and skin), so it's damped.
 const SAT_GAIN: f32 = 0.8;
+
+/// Lightroom's Whites and Blacks at ±100 as display-value curves (gamma 2.2) on 17 even knots from 0
+/// to 1, measured per tone from Lightroom exports of one drone photo (median output per input band).
+const WHITES_UP: [f32; 17] = [0.0, 0.082, 0.139, 0.197, 0.266, 0.340, 0.424, 0.508, 0.598, 0.694, 0.774, 0.850, 0.911, 0.960, 0.994, 1.0, 1.0];
+const WHITES_DOWN: [f32; 17] = [0.0, 0.080, 0.131, 0.184, 0.244, 0.301, 0.357, 0.408, 0.451, 0.496, 0.537, 0.584, 0.631, 0.679, 0.747, 0.840, 0.942];
+const BLACKS_UP: [f32; 17] = [0.105, 0.160, 0.209, 0.262, 0.321, 0.379, 0.440, 0.494, 0.549, 0.608, 0.662, 0.723, 0.778, 0.828, 0.887, 0.944, 1.0];
+const BLACKS_DOWN: [f32; 17] = [0.0, 0.0, 0.0, 0.008, 0.072, 0.172, 0.261, 0.336, 0.406, 0.482, 0.552, 0.634, 0.711, 0.783, 0.863, 0.933, 1.0];
+
+/// `p` (0..=1) through `up` at `t = 1` or `down` at `t = −1`, blended toward the identity for smaller `|t|`.
+fn table_curve(p: f32, t: f32, up: &[f32; 17], down: &[f32; 17]) -> f32 {
+    if t == 0.0 {
+        return p;
+    }
+    let table = if t > 0.0 { up } else { down };
+    let f = p.clamp(0.0, 1.0) * 16.0;
+    let i = (f as usize).min(15);
+    let (a, b) = (table.get(i).copied().unwrap_or(p), table.get(i + 1).copied().unwrap_or(p));
+    let v = a + (b - a) * (f - i as f32);
+    p + t.abs() * (v - p)
+}
 
 /// The Fork1 contrast S-curve on `p` in 0..=1 (gamma 2.2), `c` in −1..=1: for `c > 0` a blend of the
 /// identity with power curves meeting at [`PIVOT`] with exponent `1 + POWER·c` (monotone for any `c`,
@@ -561,6 +598,37 @@ mod tests {
             assert!((contrast_curve(p, 1.0) - lr).abs() < 0.015, "{p}: {}", contrast_curve(p, 1.0));
         }
         assert!(contrast_curve(f32::NAN, 0.5).is_finite());
+    }
+
+    #[test]
+    fn fork_whites_and_blacks_follow_lightroom() {
+        let base = ToneMap::display_hdr(0.0, 0.0, 0.0, 1.0);
+        let same = base.clone().with_fork_tone(0.0, 0.0, 0.0);
+        assert_eq!((same.lut(), same.sat_lut().len()), (base.lut(), 0));
+        // in display values: Whites +100 lifts a light grey a lot, −100 dims white; Blacks ±100 move the shadows
+        let at = |m: &ToneMap, p: f32| m.apply(base_inverse(&base, p)).powf(1.0 / 2.2);
+        let (wu, wd) = (base.clone().with_fork_tone(0.0, 100.0, 0.0), base.clone().with_fork_tone(0.0, -100.0, 0.0));
+        let (bu, bd) = (base.clone().with_fork_tone(0.0, 0.0, 100.0), base.clone().with_fork_tone(0.0, 0.0, -100.0));
+        assert!(at(&wu, 0.66) > 0.78 && at(&wd, 0.66) < 0.58, "{} {}", at(&wu, 0.66), at(&wd, 0.66));
+        assert!(at(&bu, 0.1) > 0.18 && at(&bd, 0.2) < 0.03, "{} {}", at(&bu, 0.1), at(&bd, 0.2));
+        // half strength sits between, and every map stays monotone
+        let half = base.clone().with_fork_tone(0.0, 50.0, 0.0);
+        assert!(at(&half, 0.66) > 0.68 && at(&half, 0.66) < at(&wu, 0.66));
+        for m in [&wu, &wd, &bu, &bd, &half] {
+            assert!(m.lut().windows(2).all(|w| w[1] >= w[0]));
+        }
+        assert!(bd.sat_scale(0.18) > 1.0 && wu.sat_scale(0.3) > 1.0);
+    }
+
+    /// The scene luminance `base` maps to display value `p` (gamma 2.2), by bisection.
+    fn base_inverse(base: &ToneMap, p: f32) -> f32 {
+        let target = p.powf(2.2);
+        let (mut lo, mut hi) = (1e-6f32, 64.0f32);
+        for _ in 0..60 {
+            let mid = (lo * hi).sqrt();
+            if base.apply(mid) < target { lo = mid } else { hi = mid }
+        }
+        (lo * hi).sqrt()
     }
 
     #[test]
