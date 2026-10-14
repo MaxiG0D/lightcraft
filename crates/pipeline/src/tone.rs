@@ -223,11 +223,12 @@ impl ToneMap {
 
     /// Fork-only (MaxiG0D/lightcraft, [`lightcraft_develop::Process::Fork1`]): this map followed by a
     /// Lightroom-like Contrast, `contrast` in −100..100. One S-curve for every source (camera look,
-    /// default raw curve or rendered file), in a gamma-2.2 domain about display grey, with black and
-    /// white fixed; about 1.7× the midtone slope at +100, and −100 its exact inverse. HDR values above SDR
-    /// white pass. As a curve applied to the R, G and B channels would (the DNG SDK's hue-preserving RGB
-    /// tone curve), it scales colourfulness by its log-log slope ([`ToneMap::sat_scale`]): more contrast
-    /// gives more colour, less gives less. At 0 the map is unchanged.
+    /// default raw curve or rendered file), in a gamma-2.2 domain about a light midtone (so +100 darkens
+    /// walls and skin rather than lifting them), with black and white fixed; about 1.6× the slope there at
+    /// +100, and −100 its exact inverse. HDR values above SDR white pass. Like a curve applied to the R, G
+    /// and B channels (the DNG SDK's hue-preserving RGB tone curve), it scales colourfulness with its
+    /// log-log slope ([`ToneMap::sat_scale`], damped by [`SAT_GAIN`]): more contrast gives more colour,
+    /// less gives less. At 0 the map is unchanged.
     pub fn with_rgb_contrast(mut self, contrast: f64) -> ToneMap {
         let c = (contrast / 100.0) as f32;
         if c == 0.0 || !c.is_finite() {
@@ -247,7 +248,7 @@ impl ToneMap {
         };
         self.sat = (0..LUT_N)
             .map(|i| match (log_slope(&self.lut, i), log_slope(&base, i)) {
-                (Some(new), Some(old)) if old > 1e-5 => (new / old).clamp(0.5, 1.8),
+                (Some(new), Some(old)) if old > 1e-5 => (new / old).powf(SAT_GAIN).clamp(0.5, 1.8),
                 _ => 1.0,
             })
             .collect();
@@ -311,16 +312,22 @@ impl ToneMap {
     }
 }
 
-/// Display grey in the gamma-2.2 domain: the pivot of [`contrast_curve`].
-const PIVOT: f32 = 0.459_157_8; // 0.18^(1/2.2)
+/// The pivot of [`contrast_curve`] in the gamma-2.2 domain, a light midtone (display-linear 0.39), and
+/// its shape below, fitted to Lightroom's Contrast +100 on a phone photo (display values 0.40 → 0.30,
+/// 0.51 → 0.45, 0.67 → 0.68, 0.81 → 0.88): it darkens the midtones and keeps the light tones.
+const PIVOT: f32 = 0.65;
+const POWER: f32 = 0.65;
+const BLEND: f32 = 0.9;
+/// How much of the curve's log-log slope becomes colourfulness: a full RGB curve's coupling gives more
+/// colour than Lightroom at +100 (orange wood and skin), so it's damped.
+const SAT_GAIN: f32 = 0.8;
 
 /// The Fork1 contrast S-curve on `p` in 0..=1 (gamma 2.2), `c` in −1..=1: for `c > 0` a blend of the
-/// identity with power curves meeting at [`PIVOT`] with slope `1 + 1.2c` (monotone for any `c`, black,
-/// grey and white fixed); for `c < 0` the inverse of the curve for `|c|`, so −x undoes +x.
+/// identity with power curves meeting at [`PIVOT`] with exponent `1 + POWER·c` (monotone for any `c`,
+/// black, pivot and white fixed); for `c < 0` the inverse of the curve for `|c|`, so −x undoes +x.
 fn contrast_curve(p: f32, c: f32) -> f32 {
-    const BLEND: f32 = 0.6;
     let up = |p: f32, c: f32| {
-        let g = 1.0 + 1.2 * c;
+        let g = 1.0 + POWER * c;
         let s = if p <= PIVOT { PIVOT * (p / PIVOT).powf(g) } else { 1.0 - (1.0 - PIVOT) * ((1.0 - p) / (1.0 - PIVOT)).powf(g) };
         p + BLEND * (s - p)
     };
@@ -533,7 +540,7 @@ mod tests {
     fn fork_contrast_curve_is_monotone_fixes_black_grey_white_and_inverts() {
         for c in [-1.0f32, -0.6, -0.2, 0.2, 0.6, 1.0] {
             assert!(contrast_curve(0.0, c).abs() < 1e-5 && (contrast_curve(1.0, c) - 1.0).abs() < 1e-5, "{c}");
-            assert!((contrast_curve(PIVOT, c) - PIVOT).abs() < 1e-5, "{c}: grey stays");
+            assert!((contrast_curve(PIVOT, c) - PIVOT).abs() < 1e-5, "{c}: the pivot stays");
             let mut prev = -1.0;
             for i in 0..=1000 {
                 let v = contrast_curve(i as f32 / 1000.0, c);
@@ -545,10 +552,14 @@ mod tests {
                 assert!((contrast_curve(contrast_curve(p, c), -c) - p).abs() < 1e-4, "{c} at {p}");
             }
         }
-        // +100: about 1.7× the slope at grey, steeper than V1's display S-curve (≈ 1.35×)
+        // +100: about 1.6× the slope at the pivot, steeper than V1's display S-curve (≈ 1.35×)
         let h = 1e-3;
         let slope = (contrast_curve(PIVOT + h, 1.0) - contrast_curve(PIVOT - h, 1.0)) / (2.0 * h);
-        assert!((slope - 1.72).abs() < 0.02, "{slope}");
+        assert!((slope - 1.58).abs() < 0.02, "{slope}");
+        // Lightroom's +100 on the reference photo, within 0.015
+        for (p, lr) in [(0.40f32, 0.296f32), (0.466, 0.382), (0.51, 0.453), (0.674, 0.684), (0.815, 0.877)] {
+            assert!((contrast_curve(p, 1.0) - lr).abs() < 0.015, "{p}: {}", contrast_curve(p, 1.0));
+        }
         assert!(contrast_curve(f32::NAN, 0.5).is_finite());
     }
 
@@ -561,7 +572,7 @@ mod tests {
         assert_eq!(base.clone().with_rgb_contrast(f64::NAN).sat_lut().len(), 0);
         let up = base.clone().with_rgb_contrast(100.0);
         let down = base.clone().with_rgb_contrast(-100.0);
-        // darker shadows, brighter highlights; grey about where it was
+        // darker shadows and midtones, brighter highlights
         assert!(up.apply(0.03) < base.apply(0.03) && up.apply(0.8) > base.apply(0.8));
         assert!(down.apply(0.03) > base.apply(0.03) && down.apply(0.8) < base.apply(0.8));
         // more contrast, more colour in the midtones; less, less
