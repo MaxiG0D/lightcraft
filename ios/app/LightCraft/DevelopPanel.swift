@@ -457,7 +457,7 @@ struct Flyout: View {
                         .font(LCFont.semibold(LCMetrics.flyoutTitleFont))
                         .foregroundStyle(t.textLabel)
                     Spacer()
-                    LCIconView(icon: open ? .chevronDown : .triangleLeft, size: 12, color: t.textLabel)
+                    LCIconView(icon: open ? .chevronDown : .chevronLeft, size: 12, color: t.textLabel)
                         .padding(.trailing, 8)
                 }
                 .padding(.leading, LCMetrics.flyoutTileInset)

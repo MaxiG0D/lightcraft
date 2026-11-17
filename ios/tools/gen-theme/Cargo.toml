@@ -11,7 +11,8 @@ workspace = true
 
 [dependencies]
 lightcraft-ui-egui = { path = "../../../crates/ui-egui" }
-egui = "0.36"
+egui = "0.37"
+lightcraft-pipeline = { path = "../../../crates/pipeline" }
 lightcraft-develop = { path = "../../../crates/develop" }
 lightcraft-ffi = { path = "../../lightcraft-ffi" }
 png = "0.18"

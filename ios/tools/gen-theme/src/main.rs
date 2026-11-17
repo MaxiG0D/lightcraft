@@ -36,7 +36,16 @@ const WIDGETS: &str = "crates/ui-egui/src/widgets.rs";
 const EDIT: &str = "crates/ui-egui/src/panels/edit.rs";
 const ENGINE_DEVELOP: &str = "crates/engine/src/cmd/develop.rs";
 const UI_LIB: &str = "crates/ui-egui/src/lib.rs";
-const DETAIL: &str = "crates/ui-egui/src/panels/detail.rs";
+const EDIT_SLIDERS: &str = "crates/ui-egui/src/panels/edit/sliders.rs";
+const EDIT_HISTOGRAM: &str = "crates/ui-egui/src/panels/edit/histogram.rs";
+const EDIT_HDR_FLOW: &str = "crates/ui-egui/src/panels/edit/hdr_flow.rs";
+const EDIT_CURVE: &str = "crates/ui-egui/src/panels/edit/curve.rs";
+const HISTOGRAM_PANEL: &str = "crates/ui-egui/src/panels/histogram.rs";
+const FILMSTRIP: &str = "crates/ui-egui/src/panels/detail/filmstrip.rs";
+const EDIT_GRADING: &str = "crates/ui-egui/src/panels/edit/grading.rs";
+const EDIT_MIXER: &str = "crates/ui-egui/src/panels/edit/mixer.rs";
+const PIPELINE_CURVE: &str = "crates/pipeline/src/curve.rs";
+const GRID: &str = "crates/ui-egui/src/panels/grid.rs";
 const APP_ICON_README: &str = "assets/app-icon/README.md";
 /// The desktop's 1024 px app icon (a rounded tile); iOS masks its own corners.
 const APP_ICON: &str = "assets/app-icon/lightcraft-1024.png";
@@ -59,21 +68,21 @@ const MIRRORS: &[Mirror] = &[
     m("sliderTrackTop", 22.0, WIDGETS, "pos2(row.left() + pad_l, row.top() + 22.0), pos2(row.right() - pad_r, row.top() + 40.0)"),
     m("sliderTrackBottom", 40.0, WIDGETS, "pos2(row.left() + pad_l, row.top() + 22.0), pos2(row.right() - pad_r, row.top() + 40.0)"),
     m("sliderFont", 12.5, WIDGETS, "label_override.unwrap_or(spec.label)), t.font(12.5), text_c)"),
-    m("sliderRing", 7.0, WIDGETS, "let ring = 7.0;"),
+    m("sliderRing", 7.0, WIDGETS, "const THUMB_RING: f32 = 7.0;"),
     m("sliderRingStroke", 2.0, WIDGETS, "p.circle_stroke(pos2(tx, track_rect.center().y), ring, Stroke::new(2.0, ring_c));"),
     m("trackHalfThickness", 1.0, WIDGETS, "let h = 1.0;"),
     m("thumbGapExtra", 4.0, WIDGETS, "vec2(ring * 2.0 + 4.0, 6.0)"),
     // section header (widgets.rs `section_header`)
     m("sectionHeaderHeight", 52.0, WIDGETS, "ui.allocate_exact_size(vec2(w, 52.0), Sense::click())"),
-    m("sectionChevronX", 30.0, WIDGETS, "pos2(r.left() + 30.0, r.center().y), vec2(14.0, 14.0)"),
-    m("sectionChevronSize", 14.0, WIDGETS, "pos2(r.left() + 30.0, r.center().y), vec2(14.0, 14.0)"),
+    m("sectionChevronX", 30.0, WIDGETS, "pos2(r.left() + 30.0, r.center().y), vec2(16.0, 16.0)"),
+    m("sectionChevronSize", 16.0, WIDGETS, "pos2(r.left() + 30.0, r.center().y), vec2(16.0, 16.0)"),
     m("sectionTitleX", 44.0, WIDGETS, "p.text(pos2(r.left() + 44.0, r.center().y), Align2::LEFT_CENTER, title, t.semibold(14.0), t.text);"),
     m("sectionTitleFont", 14.0, WIDGETS, "p.text(pos2(r.left() + 44.0, r.center().y), Align2::LEFT_CENTER, title, t.semibold(14.0), t.text);"),
     // text buttons (widgets.rs `text_button`)
     m("buttonFont", 11.5, WIDGETS, "let font = t.semibold(11.5);"),
-    m("buttonPadding", 18.0, WIDGETS, "let size = vec2((galley.size().x + 18.0).max(37.0), 24.0);"),
-    m("buttonMinWidth", 37.0, WIDGETS, "let size = vec2((galley.size().x + 18.0).max(37.0), 24.0);"),
-    m("buttonHeight", 24.0, WIDGETS, "let size = vec2((galley.size().x + 18.0).max(37.0), 24.0);"),
+    m("buttonPadding", 18.0, WIDGETS, "(text_width + 18.0).max(37.0)"),
+    m("buttonMinWidth", 37.0, WIDGETS, "(text_width + 18.0).max(37.0)"),
+    m("buttonHeight", 24.0, WIDGETS, "let size = vec2(text_button_width(galley.size().x), 24.0);"),
     m("buttonRadius", 4.0, WIDGETS, "p.rect(r, CornerRadius::same(4), fill, Stroke::new(1.0, t.button_border), StrokeKind::Inside);"),
     // flyout rows (widgets.rs `flyout_row`): Curve, Color Mixer, Defringe…
     m("flyoutHeight", 40.0, WIDGETS, "let (outer, _) = ui.allocate_exact_size(vec2(w, 40.0), Sense::hover());"),
@@ -111,84 +120,74 @@ const MIRRORS: &[Mirror] = &[
         "p.text(pos2(tile.right() + 10.0, r.center().y), Align2::LEFT_CENTER, title, t.semibold(13.0), t.text_label);",
     ),
     // sub-titles (edit.rs `sub_title`) and segmented controls (widgets.rs `segmented`)
-    m("subtitleHeight", 30.0, EDIT, "let (r, _) = ui.allocate_exact_size(vec2(ui.available_width(), 30.0), Sense::hover());"),
+    m("subtitleHeight", 30.0, EDIT_SLIDERS, "let (r, _) = ui.allocate_exact_size(vec2(ui.available_width(), 30.0), Sense::hover());"),
     m(
         "subtitleFont",
         13.0,
-        EDIT,
+        EDIT_SLIDERS,
         "ui.painter().text(pos2(r.left() + 24.0, r.center().y + 4.0), Align2::LEFT_CENTER, crate::i18n::tr(title), t.semibold(13.0), t.text_label);",
     ),
     m("segmentGap", 4.0, WIDGETS, "let gap = 4.0;"),
     m("segmentHeight", 24.0, WIDGETS, "let (r, resp) = ui.allocate_exact_size(vec2(seg_w, 24.0), Sense::click());"),
     // filmstrip (detail.rs `filmstrip`)
-    m("filmTopStrip", 4.0, DETAIL, "ui.painter().rect_filled(Rect::from_min_size(r.min, vec2(r.width(), 4.0)), 0.0, Color32::from_gray(0x20));"),
+    m("filmTopStrip", 4.0, FILMSTRIP, "ui.painter().rect_filled(Rect::from_min_size(r.min, vec2(r.width(), 4.0)), 0.0, Color32::from_gray(0x20));"),
     m(
         "filmNameFont",
         10.0,
-        DETAIL,
+        FILMSTRIP,
         "p.text(pos2(cr.left() + 8.0, cr.top() + 10.0), Align2::LEFT_CENTER, film_label(name), t.font(10.0), t.text_dim);",
     ),
     m(
         "filmFormatFont",
         8.5,
-        DETAIL,
+        FILMSTRIP,
         "p.text(pos2(cr.right() - 8.0, cr.top() + 10.0), Align2::RIGHT_CENTER, &ph.format, t.semibold(8.5), t.text_dim);",
     ),
-    m("filmImageInsetSide", 10.0, DETAIL, "let img_area = Rect::from_min_max(cr.min + vec2(10.0, 22.0), cr.max - vec2(10.0, 8.0));"),
-    m("filmImageInsetTop", 22.0, DETAIL, "let img_area = Rect::from_min_max(cr.min + vec2(10.0, 22.0), cr.max - vec2(10.0, 8.0));"),
-    m("filmImageInsetBottom", 8.0, DETAIL, "let img_area = Rect::from_min_max(cr.min + vec2(10.0, 22.0), cr.max - vec2(10.0, 8.0));"),
-    m("filmSelectedStroke", 1.5, DETAIL, "p.rect_stroke(fr, 0.0, Stroke::new(1.5, Color32::WHITE), StrokeKind::Outside);"),
+    m("filmImageInsetSide", 10.0, FILMSTRIP, "let img_area = Rect::from_min_max(cr.min + vec2(10.0, 22.0), cr.max - vec2(10.0, 8.0));"),
+    m("filmImageInsetTop", 22.0, FILMSTRIP, "let img_area = Rect::from_min_max(cr.min + vec2(10.0, 22.0), cr.max - vec2(10.0, 8.0));"),
+    m("filmImageInsetBottom", 8.0, FILMSTRIP, "let img_area = Rect::from_min_max(cr.min + vec2(10.0, 22.0), cr.max - vec2(10.0, 8.0));"),
+    m("filmSelectedStroke", 1.5, GRID, "p.rect_stroke(photo, 0.0, Stroke::new(1.5, t.ring_selected), StrokeKind::Outside);"),
     // grading wheel (edit.rs `grading_wheel`): hue counter-clockwise from the right
-    rust(EDIT, "let dot = c + vec2(a.cos(), -a.sin()) * rad * (wh.sat as f32 / 100.0);"),
+    rust(EDIT_GRADING, "let dot = c + vec2(a.cos(), -a.sin()) * rad * (wh.sat as f32 / 100.0);"),
     // Edit header (edit.rs `show`)
     m("editHeaderHeight", 40.0, EDIT, "let (hr, _) = ui.allocate_exact_size(vec2(ui.available_width(), 40.0), Sense::hover());"),
     m("editTitleFont", 15.0, EDIT, "crate::i18n::tr(\"Edit\"), t.semibold(15.0), t.text);"),
     m("editTitleBaselineInset", 10.0, EDIT, "ui.painter().text(pos2(hr.left() + 24.0, hr.bottom() - 10.0)"),
     m("editButtonsTop", 8.0, EDIT, "egui::Frame::NONE.inner_margin(egui::Margin { left: 24, right: 22, top: 8, bottom: 14 }).show(ui, |ui| {"),
     m("editButtonsBottom", 14.0, EDIT, "egui::Frame::NONE.inner_margin(egui::Margin { left: 24, right: 22, top: 8, bottom: 14 }).show(ui, |ui| {"),
-    m("editButtonsSpacing", 8.0, EDIT, "ui.spacing_mut().item_spacing.x = 8.0;"),
+    m("editButtonsSpacing", 8.0, EDIT_SLIDERS, "const GAP: f32 = 8.0;"),
     // histogram (edit.rs `histogram`)
-    m("histogramHeight", 118.0, EDIT, "let (r, resp) = ui.allocate_exact_size(vec2(w, 118.0 + legend), Sense::click());"),
-    m("histogramPlotTop", 6.0, EDIT, "let plot = Rect::from_min_max(r.min + vec2(0.0, 6.0), pos2(r.right(), r.bottom() - 26.0 - legend));"),
-    m("histogramPlotBottomInset", 26.0, EDIT, "let plot = Rect::from_min_max(r.min + vec2(0.0, 6.0), pos2(r.right(), r.bottom() - 26.0 - legend));"),
-    m("histogramSmoothRadius", 2.0, EDIT, "let (a, b) = (i.max(2) - 2, (i + 3).min(256));"),
-    m("histogramLineWidth", 1.5, EDIT, "p.add(egui::Shape::line(pts, Stroke::new(1.5, *c)));"),
-    m("histogramLumaGray", 120.0, EDIT, "Color32::from_gray(120).gamma_multiply(0.35)"),
-    m("histogramLumaOpacity", 0.35, EDIT, "Color32::from_gray(120).gamma_multiply(0.35)"),
-    m("histogramClipThreshold", 0.003, EDIT, "(lo > 0.003, plot.left() + 12.0, app.ui.show_clipping)"),
-    m("histogramClipInset", 12.0, EDIT, "(lo > 0.003, plot.left() + 12.0, app.ui.show_clipping)"),
-    m("captureLineInset", 13.0, EDIT, "let y = r.bottom() - 13.0;"),
-    m("captureLineFont", 12.5, EDIT, "p.text(pos2(x, y), Align2::CENTER_CENTER, text, t.font(12.5), t.text_label);"),
+    m("histogramHeight", 118.0, EDIT_HISTOGRAM, "let (r, resp) = ui.allocate_exact_size(vec2(w, 118.0 + legend), Sense::click_and_drag());"),
+    m("histogramPlotTop", 6.0, EDIT_HISTOGRAM, "let plot = Rect::from_min_max(r.min + vec2(0.0, 6.0), pos2(r.right(), r.bottom() - 26.0 - legend));"),
+    m(
+        "histogramPlotBottomInset",
+        26.0,
+        EDIT_HISTOGRAM,
+        "let plot = Rect::from_min_max(r.min + vec2(0.0, 6.0), pos2(r.right(), r.bottom() - 26.0 - legend));",
+    ),
+    m("histogramSmoothRadius", 2.0, EDIT_HDR_FLOW, "let (a, b) = (i.saturating_sub(2), (i + 3).min(v.len()));"),
+    m("histogramLineWidth", 1.5, EDIT_HDR_FLOW, "to(*x, hs[j])).collect(), Stroke::new(1.5, c))"),
+    m("histogramLumaGray", 120.0, EDIT_HDR_FLOW, "Color32::from_gray(120).gamma_multiply(0.35)"),
+    m("histogramLumaOpacity", 0.35, EDIT_HDR_FLOW, "Color32::from_gray(120).gamma_multiply(0.35)"),
+    m("histogramClipThreshold", 0.003, EDIT_HISTOGRAM, "clipping.map(|(lo, _)| lo > 0.003)"),
+    m("histogramClipInset", 20.0, HISTOGRAM_PANEL, "let inset = 20.0 + scroll_bar_width + scroll_bar_outer_margin;"),
+    m("captureLineInset", 13.0, EDIT_HISTOGRAM, "let y = r.bottom() - 13.0;"),
+    m("captureLineFont", 12.5, EDIT_HISTOGRAM, "p.text(pos2(x, y), Align2::CENTER_CENTER, text, t.font(12.5), t.text_label);"),
     // histogram channel colours, as 0xRRGGBB
-    m(
-        "histogramRed",
-        0xdf3939 as f64,
-        EDIT,
-        "let chans = [(smooth(&h.r), hex(\"#df3939\")), (smooth(&h.g), hex(\"#44b072\")), (smooth(&h.b), hex(\"#3b6fe0\"))];",
-    ),
-    m(
-        "histogramGreen",
-        0x44b072 as f64,
-        EDIT,
-        "let chans = [(smooth(&h.r), hex(\"#df3939\")), (smooth(&h.g), hex(\"#44b072\")), (smooth(&h.b), hex(\"#3b6fe0\"))];",
-    ),
-    m(
-        "histogramBlue",
-        0x3b6fe0 as f64,
-        EDIT,
-        "let chans = [(smooth(&h.r), hex(\"#df3939\")), (smooth(&h.g), hex(\"#44b072\")), (smooth(&h.b), hex(\"#3b6fe0\"))];",
-    ),
+    m("histogramRed", 0xdf3939 as f64, EDIT_HDR_FLOW, "for (j, c) in [(1, hex(\"#df3939\")), (2, hex(\"#44b072\")), (3, hex(\"#3b6fe0\"))] {"),
+    m("histogramGreen", 0x44b072 as f64, EDIT_HDR_FLOW, "for (j, c) in [(1, hex(\"#df3939\")), (2, hex(\"#44b072\")), (3, hex(\"#3b6fe0\"))] {"),
+    m("histogramBlue", 0x3b6fe0 as f64, EDIT_HDR_FLOW, "for (j, c) in [(1, hex(\"#df3939\")), (2, hex(\"#44b072\")), (3, hex(\"#3b6fe0\"))] {"),
     // Rust mirrors in lightcraft-ffi/src/controls.rs and lib.rs
     rust(
-        EDIT,
+        EDIT_SLIDERS,
         "id: \"wb.tempRel\",\n    label: \"Temp\",\n    section: Section::Color,\n    min: -100.0,\n    max: 100.0,\n    default: 0.0,\n    step: 1.0,\n    decimals: 0,\n    track: Track::Temp,",
     ),
     rust(
-        EDIT,
+        EDIT_SLIDERS,
         "id: \"wb.tintRel\",\n    label: \"Tint\",\n    section: Section::Color,\n    min: -100.0,\n    max: 100.0,\n    default: 0.0,\n    step: 1.0,\n    decimals: 0,\n    track: Track::Tint,",
     ),
-    rust(EDIT, "((1e6 / 6500.0 - 1e6 / k) / 0.8).clamp(-100.0, 100.0)"),
-    rust(EDIT, "1e6 / (1e6 / 6500.0 - r * 0.8)"),
+    rust(EDIT_SLIDERS, "((1e6 / 6500.0 - 1e6 / k) / 0.8).clamp(-100.0, 100.0)"),
+    rust(EDIT_SLIDERS, "1e6 / (1e6 / 6500.0 - r * 0.8)"),
     rust(WIDGETS, "Track::Temp => [\"#193961\", \"#47566a\", \"#60666d\", \"#70705b\", \"#737339\", \"#75742a\"]"),
     rust(WIDGETS, "Track::Tint => [\"#246123\", \"#2c552c\", \"#394739\", \"#4a3d4c\", \"#6b336b\", \"#872c87\"]"),
     rust(
@@ -199,14 +198,14 @@ const MIRRORS: &[Mirror] = &[
     rust(WIDGETS, "let t = t.trim_end_matches(|c: char| c == '%' || c == 'K' || c == 'k' || c.is_whitespace());"),
     rust(
         ENGINE_DEVELOP,
-        "d.light.exposure = a.exposure;\n                d.light.contrast = a.contrast;\n                d.light.highlights = a.highlights;\n                d.light.shadows = a.shadows;\n                d.light.whites = a.whites;\n                d.light.blacks = a.blacks;\n                d.color.vibrance = a.vibrance;\n                d.color.saturation = a.saturation;",
+        "nd.light.exposure = a.exposure;\n                nd.light.contrast = a.contrast;\n                nd.light.highlights = a.highlights;\n                nd.light.shadows = a.shadows;\n                nd.light.whites = a.whites;\n                nd.light.blacks = a.blacks;\n                nd.color.vibrance = a.vibrance;\n                nd.color.saturation = a.saturation;",
     ),
     rust(ENGINE_DEVELOP, "d.treatment = if bw { Treatment::Bw } else { Treatment::Color };"),
     // lightcraft-ffi lib.rs: which photos show Kelvin sliders, `is_bw`, the capture line
     rust(EDIT, "let raw = app.session.catalog.photo(id).is_some_and(|p| p.develops_raw() && !p.relative_wb());"),
     rust(UI_LIB, "d.treatment == lightcraft_develop::Treatment::Bw || d.profile.id == \"lc.mono\" || d.profile.id.starts_with(\"lc.bw.\")"),
     rust(
-        EDIT,
+        EDIT_HISTOGRAM,
         "m.iso.map(|i| format!(\"ISO {i}\")),\n            m.focal_mm.map(|f| format!(\"{f:.0}mm\")),\n            m.aperture.map(|a| format!(\"f/{a:.1}\")),",
     ),
     // lightcraft-ffi controls.rs: the mixer / grading tracks
@@ -230,41 +229,41 @@ const MIRRORS: &[Mirror] = &[
         "(V::HighlightPriority, \"Highlight\", \"highlightPriority\"),\n                (V::ColorPriority, \"Color\", \"colorPriority\"),\n                (V::PaintOverlay, \"Paint\", \"paintOverlay\"),",
     ),
     rust(
-        EDIT,
+        EDIT_GRADING,
         "(\"3way\", \"3-Way\", Icon::GradeAll),\n    (\"shadows\", \"Shadows\", Icon::GradeShadows),\n    (\"midtones\", \"Midtones\", Icon::GradeMidtones),\n    (\"highlights\", \"Highlights\", Icon::GradeHighlights),",
     ),
-    rust(EDIT, "let lin = oklab_to_2020(lch_to_lab([l as f32, c as f32, (h_deg as f32).to_radians()]));"),
+    rust(EDIT_MIXER, "let lin = oklab_to_2020(lch_to_lab([l as f32, c as f32, (h_deg as f32).to_radians()]));"),
     // lightcraft-ffi lib.rs `curve`: the parametric curve as the desktop draws it, the identity's points
-    rust(EDIT, "let (ctr, half) = ((a + b) / 2.0, (b - a) * 0.75 + 0.05);"),
-    rust(EDIT, "dd += amt / 100.0 * 0.22 * (0.5 + 0.5 * (tt * std::f64::consts::PI).cos());"),
-    rust(EDIT, "to_screen(x, (x + dd * 4.0 * x * (1.0 - x)).clamp(0.0, 1.0))"),
-    rust(EDIT, "if v.is_empty() { vec![Point::new(0.0, 0.0), Point::new(1.0, 1.0)] } else { v.clone() }"),
-    rust(EDIT, "let curve = lightcraft_color::spline::MonotoneCurve::new(&pts.iter().map(|q| (q.x, q.y)).collect::<Vec<_>>());"),
+    rust(PIPELINE_CURVE, "let (ctr, half) = ((a + b) / 2.0, (b - a) * 0.75 + 0.05);"),
+    rust(PIPELINE_CURVE, "d += (amt / 100.0) as f32 * 0.22 * (0.5 + 0.5 * (t * std::f32::consts::PI).cos());"),
+    rust(PIPELINE_CURVE, "let y = (x + d * 4.0 * x * (1.0 - x)).clamp(0.0, 1.0);"),
+    rust(EDIT_CURVE, "if v.len() < 2 { vec![Point::new(0.0, 0.0), Point::new(1.0, 1.0)] } else { v }"),
+    rust(EDIT_CURVE, "let curve = lightcraft_color::spline::MonotoneCurve::new(&pts.iter().map(|q| (q.x, q.y)).collect::<Vec<_>>());"),
     // the curve channels' colours (Swift `CurveEditor`)
     m(
         "curveRed",
         0xdd3333 as f64,
-        EDIT,
+        EDIT_CURVE,
         "\"red\" => hex(\"#dd3333\"),\n        \"green\" => hex(\"#33bb55\"),\n        \"blue\" => hex(\"#3377ee\"),",
     ),
     m(
         "curveGreen",
         0x33bb55 as f64,
-        EDIT,
+        EDIT_CURVE,
         "\"red\" => hex(\"#dd3333\"),\n        \"green\" => hex(\"#33bb55\"),\n        \"blue\" => hex(\"#3377ee\"),",
     ),
     m(
         "curveBlue",
         0x3377ee as f64,
-        EDIT,
+        EDIT_CURVE,
         "\"red\" => hex(\"#dd3333\"),\n        \"green\" => hex(\"#33bb55\"),\n        \"blue\" => hex(\"#3377ee\"),",
     ),
     // lightcraft-ffi panel.rs: the special editors' control families, as the desktop panel builds their ids
-    rust(EDIT, "control(app, ui, d, &format!(\"mixer.{b}.{k}\"), true);"),
-    rust(EDIT, "control(app, ui, d, &format!(\"bw.{b}\"), true);"),
-    rust(EDIT, "control(app, ui, d, &format!(\"grading.{mode}.{part}\"), true);"),
-    rust(EDIT, "for k in [\"hueShift\", \"satShift\", \"lumShift\", \"variance\"] {"),
-    rust(EDIT, "for k in [\"range\", \"hueRange\", \"satRange\", \"lumRange\"] {"),
+    rust(EDIT_MIXER, "control(app, ui, d, &format!(\"mixer.{b}.{k}\"), true);"),
+    rust(EDIT_MIXER, "control(app, ui, d, &format!(\"bw.{b}\"), true);"),
+    rust(EDIT_GRADING, "control(app, ui, d, &format!(\"grading.{mode}.{part}\"), true);"),
+    rust(EDIT_MIXER, "for k in [\"hueShift\", \"satShift\", \"lumShift\", \"variance\"] {"),
+    rust(EDIT_MIXER, "for k in [\"range\", \"hueRange\", \"satRange\", \"lumRange\"] {"),
     rust(
         EDIT,
         "control(app, ui, d, &format!(\"calibration.{k}Hue\"), true);\n            control(app, ui, d, &format!(\"calibration.{k}Sat\"), true);",
@@ -286,7 +285,6 @@ const ICONS: &[(&str, Icon)] = &[
     ("lc.chevronDown", Icon::ChevronDown),
     ("lc.chevronRight", Icon::ChevronRight),
     ("lc.chevronLeft", Icon::ChevronLeft),
-    ("lc.triangleLeft", Icon::TriangleLeft),
     ("lc.info", Icon::Info),
     ("lc.moon", Icon::Moon),
     ("lc.sun", Icon::Sun),
@@ -328,25 +326,59 @@ fn desktop_panel_controls(edit_rs: &str) -> Vec<String> {
         ids.push(format!("calibration.{k}Hue"));
         ids.push(format!("calibration.{k}Sat"));
     }
+    // `panels/edit/curve.rs` loops over `PARAM_AMOUNTS` instead of naming the four parametric
+    // curve sliders as literals (checked as a MIRROR line by name, here by value)
+    if edit_rs.contains("PARAM_AMOUNTS") {
+        ids.extend(lightcraft_pipeline::PARAM_AMOUNTS.iter().map(|s| s.to_string()));
+    }
     ids.sort();
     ids.dedup();
     ids
 }
 
-/// Every slider of the desktop's Edit panel has a place in the iOS layout (`lightcraft-ffi`
-/// `panel.rs`), and the iOS layout places nothing the desktop panel no longer shows.
-fn check_panel(repo: &Path) -> Result<(), String> {
-    let edit = std::fs::read_to_string(repo.join(EDIT)).map_err(|e| format!("{EDIT}: {e}"))?;
-    let desktop = desktop_panel_controls(&edit);
-    let ios = lightcraft_ffi::placed_controls();
-    let missing: Vec<&String> = desktop.iter().filter(|id| !ios.contains(id)).collect();
+/// Desktop controls the iOS app doesn't place yet: the desktop Lens Blur section needs its
+/// focus/bokeh editor on iOS first. The mirror check ignores them as "shown on desktop, not placed
+/// on iOS", and fails once `panel.rs` places one, so remove the entry then.
+const NOT_YET_ON_IOS: &[&str] = &["lensBlur.amount", "lensBlur.boost", "lensBlur.transition"];
+
+/// Compare the desktop's control ids with the ids the iOS layout places.
+fn compare_panels(desktop: &[String], ios: &[String]) -> Result<(), String> {
+    let missing: Vec<&String> = desktop.iter().filter(|id| !ios.contains(id) && !NOT_YET_ON_IOS.contains(&id.as_str())).collect();
     let extra: Vec<&String> = ios.iter().filter(|id| !desktop.contains(id)).collect();
-    if missing.is_empty() && extra.is_empty() {
+    let stale: Vec<&&str> = NOT_YET_ON_IOS.iter().filter(|id| ios.iter().any(|i| i == **id)).collect();
+    if missing.is_empty() && extra.is_empty() && stale.is_empty() {
         return Ok(());
     }
     Err(format!(
-        "the desktop Edit panel ({EDIT}) changed; update ios/lightcraft-ffi/src/panel.rs:\n  shown on desktop, not placed on iOS: {missing:?}\n  placed on iOS, no longer on desktop: {extra:?}"
+        "the desktop Edit panel ({EDIT}) changed; update ios/lightcraft-ffi/src/panel.rs:\n  shown on desktop, not placed on iOS: {missing:?}\n  placed on iOS, no longer on desktop: {extra:?}\n  placed on iOS but still listed in NOT_YET_ON_IOS (remove them from that list): {stale:?}"
     ))
+}
+
+/// The Edit panel's source: `edit.rs` plus every file of its `edit/` submodule directory (sorted, so
+/// the result is stable). Read at run time because the set of submodules changes upstream.
+fn read_edit_sources(repo: &Path) -> Result<String, String> {
+    let mut out = std::fs::read_to_string(repo.join(EDIT)).map_err(|e| format!("{EDIT}: {e}"))?;
+    let dir = repo.join(EDIT.trim_end_matches(".rs"));
+    let mut files: Vec<std::path::PathBuf> = std::fs::read_dir(&dir)
+        .map_err(|e| format!("{}: {e}", dir.display()))?
+        .filter_map(|e| e.ok().map(|e| e.path()))
+        .filter(|p| p.extension().is_some_and(|x| x == "rs"))
+        .collect();
+    files.sort();
+    for f in files {
+        out.push('\n');
+        out.push_str(&std::fs::read_to_string(&f).map_err(|e| format!("{}: {e}", f.display()))?);
+    }
+    Ok(out)
+}
+
+/// Every slider of the desktop's Edit panel has a place in the iOS layout (`lightcraft-ffi`
+/// `panel.rs`), and the iOS layout places nothing the desktop panel no longer shows.
+fn check_panel(repo: &Path) -> Result<(), String> {
+    let edit = read_edit_sources(repo)?;
+    let desktop = desktop_panel_controls(&edit);
+    let ios = lightcraft_ffi::placed_controls();
+    compare_panels(&desktop, &ios)
 }
 
 fn check(repo: &Path) -> Result<(), String> {
@@ -428,6 +460,10 @@ fn token_fields(t: &Tokens) -> TokenFields {
         reject,
         caution,
         mask_overlay,
+        skeleton,
+        ring_active,
+        ring_inner,
+        ring_selected,
         top_bar_h,
         bottom_bar_h,
         panel_w,
@@ -466,6 +502,10 @@ fn token_fields(t: &Tokens) -> TokenFields {
             ("reject", reject),
             ("caution", caution),
             ("mask_overlay", mask_overlay),
+            ("skeleton", skeleton),
+            ("ring_active", ring_active),
+            ("ring_inner", ring_inner),
+            ("ring_selected", ring_selected),
         ],
         vec![
             ("top_bar_h", top_bar_h),
@@ -704,7 +744,7 @@ mod tests {
     #[test]
     fn panel_check_sees_the_desktop_panel() {
         let repo = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../..");
-        let edit = std::fs::read_to_string(repo.join(EDIT)).unwrap();
+        let edit = read_edit_sources(&repo).unwrap();
         let desktop = desktop_panel_controls(&edit);
         for id in ["light.exposure", "hdr.sdrClarity", "curve.refineSaturation", "grading.midtones.lum", "optics.caBlue", "calibration.blueSat"] {
             assert!(desktop.iter().any(|d| d == id), "{id} not found in {desktop:?}");
@@ -717,10 +757,27 @@ mod tests {
         );
         assert_eq!(desktop_panel_controls(&added), desktop, "already placed ids don't change the set");
         // a real develop control the panel doesn't show yet, added upstream: iOS must place it
-        let unplaced = lightcraft_develop::controls::CONTROLS.iter().map(|c| c.id).find(|id| !desktop.iter().any(|d| d == id)).unwrap();
+        let placed = lightcraft_ffi::placed_controls();
+        let unplaced = lightcraft_develop::controls::CONTROLS
+            .iter()
+            .map(|c| c.id)
+            .find(|id| !desktop.iter().any(|d| d == id) && !placed.iter().any(|p| p == id) && !NOT_YET_ON_IOS.contains(id))
+            .unwrap();
         let grown = edit.replace("\"effects.dehaze\"", &format!("\"effects.dehaze\", \"{unplaced}\""));
         let grown_ids = desktop_panel_controls(&grown);
         assert!(grown_ids.iter().any(|d| d == unplaced) && !lightcraft_ffi::placed_controls().iter().any(|p| p == unplaced), "{unplaced}");
+    }
+
+    #[test]
+    fn not_yet_on_ios_is_ignored_but_cannot_go_stale() {
+        let desktop: Vec<String> = ["light.exposure", NOT_YET_ON_IOS[0]].iter().map(|s| s.to_string()).collect();
+        let ios = vec!["light.exposure".to_string()];
+        assert!(compare_panels(&desktop, &ios).is_ok(), "listed ids may be missing on iOS");
+        let placed = vec!["light.exposure".to_string(), NOT_YET_ON_IOS[0].to_string()];
+        let err = compare_panels(&desktop, &placed).unwrap_err();
+        assert!(err.contains("NOT_YET_ON_IOS") && err.contains(NOT_YET_ON_IOS[0]), "{err}");
+        let unlisted: Vec<String> = vec!["light.exposure".into(), "light.whites".into()];
+        assert!(compare_panels(&unlisted, &ios).is_err(), "other missing ids still fail");
     }
 
     #[test]
